@@ -15,24 +15,35 @@ export default function Home() {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url) return;
+    await handleFetch(url);
+  };
 
-    setIsLoading(true);
-    setError('');
-    setResult(null);
-    setActiveStoryIndex(0);
-
+  const handleFetch = async (inputVal: string) => {
     try {
-      const response = await fetch('/api/fetch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: url }),
-      });
-      
-      const rawData = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(rawData.error || 'Failed to fetch data');
+      setError('');
+      setIsLoading(true);
+      setResult(null);
+      setActiveStoryIndex(0);
+
+      // Clean username
+      let username = inputVal.trim();
+      if (username.includes('instagram.com/')) {
+        username = username.split('instagram.com/')[1];
+      }
+      username = username.split('?')[0].replace(/\/$/, '').replace('@', '');
+
+      if (!username) throw new Error("Please enter a valid username");
+
+      const res = await fetch(`/api/fetch?username=${username}`);
+      const text = await res.text();
+
+      if (!text || text.trim() === "") {
+        throw new Error("Instagram API blocked this request. Try another username or proxy.");
+      }
+
+      const rawData = JSON.parse(text);
+      if (!res.ok) {
+        throw new Error(rawData.error || "Failed to fetch data");
       }
 
       // Map raw Instagram data to UI result format
@@ -40,7 +51,7 @@ export default function Home() {
       if (!user) {
         throw new Error("User profile not found in response.");
       }
-
+      
       const profile = {
         username: user.username,
         name: user.full_name || user.username || "Unknown",
@@ -107,7 +118,7 @@ export default function Home() {
 
       setResult(data);
     } catch (err: any) {
-      setError(err.message || 'An error occurred while fetching the data.');
+      setError(err.message || "Something went wrong");
     } finally {
       setIsLoading(false);
     }

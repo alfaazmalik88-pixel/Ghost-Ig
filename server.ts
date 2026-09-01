@@ -46,9 +46,9 @@ async function startServer() {
 
   // --- API Route to fetch Instagram data via HikerAPI ---
     // Proxy & Instagram Handler
-  app.post('/api/fetch', async (req, res) => {
+  app.get('/api/fetch', async (req, res) => {
     try {
-      const { username } = req.body;
+      const username = req.query.username || req.body.username;
       if (!username) {
         return res.status(400).json({ error: "Username is required" });
       }

@@ -3,6 +3,8 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import fs from "fs";
+import fetch from "node-fetch";
+import { HttpsProxyAgent } from "https-proxy-agent";
 
 dotenv.config();
 
@@ -53,7 +55,7 @@ async function startServer() {
     }
 
     try {
-        console.log(`[API] Returning mock data for: ${url}`);
+        console.log(`[API] Fetching data via Webshare proxy for: ${url}`);
         
         let username = url;
         if (url.includes("instagram.com")) {
@@ -64,60 +66,121 @@ async function startServer() {
             }
         }
         
-        // Return mock data since the API was removed
+        // Setup Webshare Proxy
+        const proxyUser = process.env.WEBSHARE_USER || "user";
+        const proxyPass = process.env.WEBSHARE_PASS || "pass";
+        const proxyUrl = `http://${proxyUser}:${proxyPass}@p.webshare.io:80`;
+        const agent = new HttpsProxyAgent(proxyUrl);
+        
+        // URL for fetching Instagram profile data (using GraphQL or direct ?__a=1 format)
+        // Note: Standard scraping like this is often blocked or returns a login page 
+        // without valid cookies, but this implements the proxy flow requested.
+        const instagramUrl = `https://www.instagram.com/${username}/?__a=1&__d=dis`;
+        
+        const response = await fetch(instagramUrl, {
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9',
+            },
+            agent: agent // This routes the request through the Webshare proxy
+        });
+        
+        let proxyData = null;
+        
+        if (!response.ok) {
+            console.error(`[API] Proxy request failed with status: ${response.status}`);
+            throw new Error(`Instagram returned status ${response.status}. Proxy might be blocked.`);
+        } else {
+            const text = await response.text();
+            
+            if (!text.trim().startsWith('{')) {
+                console.error("[API] Received HTML instead of JSON. Proxy might be blocked or login required.");
+                throw new Error("Instagram blocked the request or requires login.");
+            }
+            
+            const data = JSON.parse(text);
+            const user = data.graphql?.user || data.user;
+            
+            if (!user) {
+                throw new Error("User profile not found in Instagram response.");
+            }
+            
+            // Map Profile Data
+            const profile = {
+                username: user.username || username,
+                name: user.full_name || user.username || "Unknown",
+                avatar: user.profile_pic_url_hd || user.profile_pic_url || "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400&q=80",
+                bio: user.biography || "",
+                stats: {
+                    posts: user.edge_owner_to_timeline_media?.count || 0,
+                    followers: user.edge_followed_by?.count || 0,
+                    following: user.edge_follow?.count || 0
+                }
+            };
+            
+            // Map Posts Data
+            const posts = [];
+            const reels = [];
+            const edges = user.edge_owner_to_timeline_media?.edges || [];
+            for (const edge of edges) {
+                if (edge.node) {
+                    const postData = {
+                        id: edge.node.id,
+                        type: edge.node.is_video ? 'video' : (edge.node.edge_sidecar_to_children ? 'carousel' : 'image'),
+                        url: edge.node.video_url || edge.node.display_url,
+                        thumbnail: edge.node.display_url,
+                        code: edge.node.shortcode
+                    };
+                    posts.push(postData);
+                    // If it's a video, add to reels as well
+                    if (edge.node.is_video) {
+                        reels.push(postData);
+                    }
+                }
+            }
+            
+            // Map Stories (if Cloudflare worker provides it via reels_media or edge_story)
+            const stories = [];
+            const storyEdges = data.graphql?.user?.edge_story?.edges || data.reels_media?.[0]?.items || user.stories || [];
+            for (const item of storyEdges) {
+                const node = item.node || item;
+                stories.push({
+                    id: node.id || node.pk,
+                    type: node.is_video || node.media_type === 2 ? 'video' : 'image',
+                    url: node.video_url || node.display_url || node.image_versions2?.candidates?.[0]?.url,
+                    thumbnail: node.display_url || node.image_versions2?.candidates?.[0]?.url,
+                    timestamp: node.taken_at_timestamp ? new Date(node.taken_at_timestamp * 1000).toLocaleString() : "Just now"
+                });
+            }
+
+            // Map Highlights (if Cloudflare worker provides it via edge_highlight_reels)
+            const highlights = [];
+            const highlightEdges = user.edge_highlight_reels?.edges || data.graphql?.user?.edge_highlight_reels?.edges || [];
+            for (const item of highlightEdges) {
+                const node = item.node || item;
+                highlights.push({
+                    id: node.id,
+                    type: 'image', // highlights cover is typically an image
+                    url: node.cover_media?.cropped_image_version?.url || node.cover_media_dict?.cropped_image_version?.url,
+                    thumbnail: node.cover_media?.cropped_image_version?.url || node.cover_media_dict?.cropped_image_version?.url,
+                    code: node.id
+                });
+            }
+            
+            proxyData = { profile, posts, reels, stories, highlights };
+            console.log(`[API] Successfully parsed data for ${username}. Posts: ${posts.length}, Stories: ${stories.length}, Highlights: ${highlights.length}, Reels: ${reels.length}`);
+        }
+
+        // Return the parsed data
         res.json({
           success: true,
           serverUsed: server,
-          profile: {
-            username: username || "anonymous_user",
-            name: "Demo Account",
-            avatar: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400&q=80",
-            bio: "This is a demo profile since the API was removed.\n#photography #travel",
-            stats: {
-              posts: 42,
-              followers: 1337,
-              following: 404
-            }
-          },
-          stories: [
-            {
-              id: "s1",
-              type: "image",
-              url: "https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=1080&q=80",
-              thumbnail: "https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=400&q=80",
-              timestamp: "2 hours ago"
-            },
-            {
-              id: "s2",
-              type: "video",
-              url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-              thumbnail: "https://images.unsplash.com/photo-1516259762381-22954d7d3ad2?w=400&q=80",
-              timestamp: "5 hours ago"
-            }
-          ],
-          posts: [
-            {
-              id: "p1",
-              type: "image",
-              url: "https://images.unsplash.com/photo-1611262588024-d12430b98920?w=1080&q=80",
-              thumbnail: "https://images.unsplash.com/photo-1611262588024-d12430b98920?w=400&q=80",
-              code: "ABC"
-            },
-            {
-              id: "p2",
-              type: "video",
-              url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
-              thumbnail: "https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=400&q=80",
-              code: "DEF"
-            },
-            {
-              id: "p3",
-              type: "image",
-              url: "https://images.unsplash.com/photo-1611162618071-b39a2ec055fb?w=1080&q=80",
-              thumbnail: "https://images.unsplash.com/photo-1611162618071-b39a2ec055fb?w=400&q=80",
-              code: "GHI"
-            }
-          ]
+          profile: proxyData.profile,
+          stories: proxyData.stories, 
+          posts: proxyData.posts,
+          reels: proxyData.reels,
+          highlights: proxyData.highlights
         });
 
     } catch (error: any) {

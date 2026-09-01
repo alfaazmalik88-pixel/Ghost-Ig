@@ -300,46 +300,53 @@ export default function Home() {
                   <p className="text-base md:text-xl text-center">No active stories found.</p>
                 </div>
               )
-            ) : activeTab === 'POSTS' ? (
-              result.posts && result.posts.length > 0 ? (
-                <div className="grid grid-cols-3 gap-1 sm:gap-2 md:gap-4 max-w-4xl mx-auto">
-                  {result.posts.map((post) => (
-                    <div 
-                      key={post.id} 
-                      className="relative aspect-square group bg-black/40 rounded-md sm:rounded-lg md:rounded-xl overflow-hidden cursor-pointer"
-                      onClick={() => setSelectedPost(post)}
-                    >
-                      <img 
-                        src={post.thumbnail} 
-                        alt="Instagram Post" 
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                      />
-                      {post.type === 'video' && (
-                        <div className="absolute top-1 right-1 md:top-2 md:right-2 bg-black/60 p-1 md:p-1.5 rounded-full">
-                          <Play size={12} className="text-white md:w-3.5 md:h-3.5" />
-                        </div>
-                      )}
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                         <div className="bg-[#6228d7] text-white p-2 md:p-3 rounded-full shadow-lg shadow-purple-500/40">
-                           <Eye size={16} className="md:w-5 md:h-5" />
-                         </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-12 md:py-20 text-slate-500 font-medium text-center">
-                  <p className="text-base md:text-xl">No posts found for this user.</p>
-                </div>
-              )
             ) : (
-              <div className="flex flex-col items-center justify-center py-12 md:py-20 text-slate-500 font-medium text-center px-4">
-                <div className="w-12 h-12 md:w-16 md:h-16 bg-white/5 border border-white/10 rounded-full flex items-center justify-center mb-4">
-                  <Loader2 size={24} className="text-[#6228d7] md:w-[30px] md:h-[30px]" />
-                </div>
-                <p className="text-lg md:text-xl font-bold mb-2 text-white">{activeTab} Content</p>
-                <p className="text-xs md:text-sm">Fetching {activeTab.toLowerCase()} is currently under development.</p>
-              </div>
+              // Shared grid view for POSTS, REELS, and HIGHLIGHTS
+              (() => {
+                const mediaArray = activeTab === 'POSTS' 
+                  ? result.posts 
+                  : activeTab === 'REELS' 
+                    ? result.reels 
+                    : result.highlights;
+                    
+                const emptyMessage = activeTab === 'POSTS' 
+                  ? "No posts found for this user." 
+                  : activeTab === 'REELS' 
+                    ? "No reels found for this user." 
+                    : "No highlights found for this user.";
+
+                return mediaArray && mediaArray.length > 0 ? (
+                  <div className="grid grid-cols-3 gap-1 sm:gap-2 md:gap-4 max-w-4xl mx-auto">
+                    {mediaArray.map((media) => (
+                      <div 
+                        key={media.id} 
+                        className="relative aspect-square group bg-black/40 rounded-md sm:rounded-lg md:rounded-xl overflow-hidden cursor-pointer"
+                        onClick={() => setSelectedPost(media)}
+                      >
+                        <img 
+                          src={media.thumbnail} 
+                          alt={`Instagram ${activeTab.toLowerCase()}`} 
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        />
+                        {media.type === 'video' && (
+                          <div className="absolute top-1 right-1 md:top-2 md:right-2 bg-black/60 p-1 md:p-1.5 rounded-full">
+                            <Play size={12} className="text-white md:w-3.5 md:h-3.5" />
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                           <div className="bg-[#6228d7] text-white p-2 md:p-3 rounded-full shadow-lg shadow-purple-500/40">
+                             <Eye size={16} className="md:w-5 md:h-5" />
+                           </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-12 md:py-20 text-slate-500 font-medium text-center">
+                    <p className="text-base md:text-xl">{emptyMessage}</p>
+                  </div>
+                );
+              })()
             )}
           </div>
         </motion.section>

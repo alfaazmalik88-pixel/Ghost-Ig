@@ -25,5 +25,7 @@ export interface FetchResult {
   profile: InstagramProfile;
   stories: InstagramMedia[];
   posts?: InstagramMedia[];
+  highlights?: InstagramMedia[];
+  reels?: InstagramMedia[];
   error?: string;
 }

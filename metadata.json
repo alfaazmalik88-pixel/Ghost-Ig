@@ -1,0 +1,6 @@
+{
+  "name": "GhostIG - Anonymous Instagram Story Viewer & Downloader",
+  "description": "View and download Instagram stories, reels, and posts anonymously. Optimized for ultra-fast access in India, Gulf, and Europe. No login required.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

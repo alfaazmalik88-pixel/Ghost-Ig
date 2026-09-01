@@ -66,44 +66,38 @@ async function startServer() {
             }
         }
         
-        // Setup Webshare Proxy
-        const proxyUser = process.env.WEBSHARE_USER || "user";
-        const proxyPass = process.env.WEBSHARE_PASS || "pass";
-        const proxyUrl = `http://${proxyUser}:${proxyPass}@p.webshare.io:80`;
+        const cleanUsername = username.trim().replace(/^@/, '').split('/')[0].split('?')[0];
+        
+        // Setup Webshare Proxy as requested
+        const proxyUrl = "http://wwgobxyk:nokqkt8kfvts@p.webshare.io:80";
         const agent = new HttpsProxyAgent(proxyUrl);
         
-        // URL for fetching Instagram profile data (using GraphQL or direct ?__a=1 format)
-        // Note: Standard scraping like this is often blocked or returns a login page 
-        // without valid cookies, but this implements the proxy flow requested.
-        const instagramUrl = `https://www.instagram.com/${username}/?__a=1&__d=dis`;
+        // URL for fetching Instagram profile data
+        const instagramUrl = `https://www.instagram.com/api/v1/users/web_profile_info/?username=${cleanUsername}`;
         
         const response = await fetch(instagramUrl, {
             method: 'GET',
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'x-ig-app-id': '936619743392459',
                 'Accept-Language': 'en-US,en;q=0.9',
+                'Accept': '*/*',
+                'Sec-Fetch-Site': 'same-origin'
             },
-            agent: agent // This routes the request through the Webshare proxy
+            agent
         });
         
         let proxyData = null;
         
-        if (!response.ok) {
-            console.error(`[API] Proxy request failed with status: ${response.status}`);
-            throw new Error(`Instagram returned status ${response.status}. Proxy might be blocked.`);
-        } else {
-            const text = await response.text();
-            
-            if (!text.trim().startsWith('{')) {
-                console.error("[API] Received HTML instead of JSON. Proxy might be blocked or login required.");
-                throw new Error("Instagram blocked the request or requires login.");
-            }
-            
+        const text = await response.text();
+        
+        try {
             const data = JSON.parse(text);
-            const user = data.graphql?.user || data.user;
+            
+            const user = data.data?.user || data.graphql?.user || data.user;
             
             if (!user) {
-                throw new Error("User profile not found in Instagram response.");
+                return res.status(500).json({ error: "User profile not found in Instagram response." });
             }
             
             // Map Profile Data
@@ -168,20 +162,22 @@ async function startServer() {
                 });
             }
             
-            proxyData = { profile, posts, reels, stories, highlights };
-            console.log(`[API] Successfully parsed data for ${username}. Posts: ${posts.length}, Stories: ${stories.length}, Highlights: ${highlights.length}, Reels: ${reels.length}`);
-        }
+            return res.json({
+              success: true,
+              serverUsed: server,
+              profile,
+              stories, 
+              posts,
+              reels,
+              highlights
+            });
 
-        // Return the parsed data
-        res.json({
-          success: true,
-          serverUsed: server,
-          profile: proxyData.profile,
-          stories: proxyData.stories, 
-          posts: proxyData.posts,
-          reels: proxyData.reels,
-          highlights: proxyData.highlights
-        });
+        } catch (parseError) {
+            return res.status(502).json({ 
+                error: "Instagram blocked the request or returned non-JSON data", 
+                raw: text.slice(0, 200) 
+            });
+        }
 
     } catch (error: any) {
         console.error("[API] Error fetching data:", error);

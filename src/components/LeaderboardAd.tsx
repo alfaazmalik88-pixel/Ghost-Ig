@@ -26,7 +26,31 @@ export default function LeaderboardAd() {
     return () => window.removeEventListener('resize', updateScale);
   }, []);
 
+  const [shouldLoadAd, setShouldLoadAd] = useState(false);
+
   useEffect(() => {
+    // Non-blocking deferral: Wait for the main page to load, then wait an extra 1.5s 
+    // before triggering the ad network to ensure zero UI lag.
+    let timer: number;
+    const triggerAdLoad = () => {
+      timer = window.setTimeout(() => setShouldLoadAd(true), 1500);
+    };
+
+    if (document.readyState === 'complete') {
+      triggerAdLoad();
+    } else {
+      window.addEventListener('load', triggerAdLoad);
+    }
+
+    return () => {
+      window.removeEventListener('load', triggerAdLoad);
+      clearTimeout(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!shouldLoadAd) return;
+
     const iframe = iframeRef.current;
     if (!iframe) return;
 
@@ -88,15 +112,19 @@ export default function LeaderboardAd() {
             height: '90px' 
           }}
         >
-          <iframe
-            ref={iframeRef}
-            width="728"
-            height="90"
-            frameBorder="0"
-            scrolling="no"
-            title="Advertisement"
-            style={{ border: 'none', overflow: 'hidden', display: 'block' }}
-          />
+          {shouldLoadAd ? (
+            <iframe
+              ref={iframeRef}
+              width="728"
+              height="90"
+              frameBorder="0"
+              scrolling="no"
+              title="Advertisement"
+              style={{ border: 'none', overflow: 'hidden', display: 'block' }}
+            />
+          ) : (
+            <div className="w-full h-full bg-white/5 animate-pulse rounded" />
+          )}
         </div>
       </div>
     </div>

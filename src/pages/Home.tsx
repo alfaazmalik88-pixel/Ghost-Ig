@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Loader2, Clipboard, Video, Music, AlertCircle, Youtube, Twitter, Facebook, Link2, MonitorPlay, Film, Image as ImageIcon, Smartphone } from 'lucide-react';
+import { Download, Loader2, Clipboard, Video, Music, AlertCircle, Youtube, Twitter, Facebook, Link2, MonitorPlay, Film, Image as ImageIcon, Smartphone, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import FAQ from '../components/FAQ';
+import LeaderboardAd from '../components/LeaderboardAd';
 
 export default function Home() {
   const [url, setUrl] = useState('');
@@ -287,6 +288,8 @@ export default function Home() {
 
   return (
     <div className="w-full">
+      <LeaderboardAd />
+
       {/* Hero Section */}
       <section className="text-center mb-12 flex flex-col items-center animate-in fade-in zoom-in-95 duration-500">
         <h1 className="text-4xl md:text-6xl font-extrabold mb-4 md:mb-6 tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400">
@@ -508,6 +511,8 @@ export default function Home() {
         {/* FAQ Section */}
         <FAQ />
       </section>
+
+      <LeaderboardAd />
       
     </div>
   );

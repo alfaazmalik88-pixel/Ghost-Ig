@@ -1,6 +1,6 @@
 {
-  "name": "GhostIG - Anonymous Instagram Story Viewer & Downloader",
-  "description": "View and download Instagram stories, reels, and posts anonymously. Optimized for ultra-fast access in India, Gulf, and Europe. No login required.",
+  "name": "Ghost Downloader - TikTok No Watermark & Universal Video Saver",
+  "description": "Best free TikTok video downloader without watermark. Download high-quality videos from TikTok, YouTube, Instagram Reels, and Facebook quickly and easily. No login required, 100% free.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

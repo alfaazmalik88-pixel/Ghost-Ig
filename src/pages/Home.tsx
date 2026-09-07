@@ -1,525 +1,514 @@
-import React, { useState } from 'react';
-import { Search, Download, Loader2, Play, Maximize, X, Eye } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Download, Loader2, Clipboard, Video, Music, AlertCircle, Youtube, Twitter, Facebook, Link2, MonitorPlay, Film, Image as ImageIcon, Smartphone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { FetchResult as InstagramData } from '../types';
+import FAQ from '../components/FAQ';
 
 export default function Home() {
   const [url, setUrl] = useState('');
-  const [server, setServer] = useState('server1');
+  const [quality, setQuality] = useState('1080p');
   const [isLoading, setIsLoading] = useState(false);
-  const [result, setResult] = useState<InstagramData | null>(null);
+  const [result, setResult] = useState<any>(null);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'POSTS' | 'STORIES' | 'HIGHLIGHTS' | 'REELS'>('STORIES');
-  const [activeStoryIndex, setActiveStoryIndex] = useState(0);
-  const [selectedPost, setSelectedPost] = useState<any>(null);
+  const [activePlatform, setActivePlatform] = useState<string>('');
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await handleFetch(url);
+  const detectPlatform = (input: string) => {
+    const lower = input.toLowerCase();
+    if (lower.includes('youtube.com') || lower.includes('youtu.be')) return 'youtube';
+    if (lower.includes('twitter.com') || lower.includes('x.com')) return 'twitter';
+    if (lower.includes('reddit.com')) return 'reddit';
+    if (lower.includes('tiktok.com')) return 'tiktok';
+    if (lower.includes('facebook.com') || lower.includes('fb.watch') || lower.includes('fb.com')) return 'facebook';
+    if (lower.includes('pinterest.com') || lower.includes('pin.it')) return 'pinterest';
+    if (lower.includes('instagram.com')) return 'instagram';
+    return '';
   };
 
-  const getDemoData = (uname: string): any => ({
-    success: true,
-    isDemo: true,
-    profile: {
-      username: uname || "demo_user",
-      name: "Demo Profile (Rate Limited)",
-      avatar: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400&q=80",
-      bio: "Instagram has temporarily blocked the request due to rate limits. This is a demo profile fallback to keep the UI functional.",
-      stats: { posts: 120, followers: 15400, following: 350 }
-    },
-    posts: [
-      { id: "1", type: "image", url: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400&q=80", thumbnail: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400&q=80", code: "demo1" },
-      { id: "2", type: "image", url: "https://images.unsplash.com/photo-1611250188496-e966043a0629?w=400&q=80", thumbnail: "https://images.unsplash.com/photo-1611250188496-e966043a0629?w=400&q=80", code: "demo2" },
-      { id: "3", type: "image", url: "https://images.unsplash.com/photo-1611250282006-4484dd3fba6b?w=400&q=80", thumbnail: "https://images.unsplash.com/photo-1611250282006-4484dd3fba6b?w=400&q=80", code: "demo3" }
-    ],
-    reels: [],
-    stories: [],
-    highlights: []
-  });
+  useEffect(() => {
+    setActivePlatform(detectPlatform(url));
+  }, [url]);
 
-  const handleFetch = async (inputVal: string) => {
-    let cleanUsername = "";
+  const handlePaste = async () => {
     try {
-      setError('');
-      setIsLoading(true);
-      setResult(null);
-      setActiveStoryIndex(0);
+      const text = await navigator.clipboard.readText();
+      setUrl(text);
+    } catch (err) {
+      console.error('Clipboard paste failed:', err);
+    }
+  };
 
-      // Clean username
-      cleanUsername = inputVal.trim();
-      cleanUsername = cleanUsername.replace(/^https?:\/\/(www\.)?instagram\.com\//, '');
-      cleanUsername = cleanUsername.split('/')[0].split('?')[0].replace(/^@/, '');
+  const resolveMedia = async (targetUrl: string, targetQuality: string) => {
+    const isAudio = targetQuality === 'audio';
+    const platform = detectPlatform(targetUrl);
 
-      if (!cleanUsername) throw new Error("Please enter a valid username");
-
-      const res = await fetch(`/api/fetch?username=${cleanUsername}`);
-      const text = await res.text();
-
-      if (!text || text.trim() === "") {
-        throw new Error("Instagram API blocked this request. Try another username or proxy.");
-      }
-
-      if (text.trim().startsWith('<')) {
-        throw new Error("Instagram request was blocked.");
-      }
-
-      let rawData;
-      try {
-        rawData = JSON.parse(text);
-      } catch (e) {
-        throw new Error("Instagram request was blocked.");
-      }
-
-      if (!res.ok || rawData.success === false) {
-        throw new Error(rawData.error || "Instagram request was blocked.");
-      }
-
-      // Map raw Instagram data to UI result format
-      const user = rawData.data?.user || rawData.graphql?.user || rawData.user;
-      if (!user) {
-        throw new Error("User profile not found in response.");
-      }
-      
-      const profile = {
-        username: user.username,
-        name: user.full_name || user.username || "Unknown",
-        avatar: user.profile_pic_url_hd || user.profile_pic_url,
-        bio: user.biography || "",
-        stats: {
-            posts: user.edge_owner_to_timeline_media?.count || 0,
-            followers: user.edge_followed_by?.count || 0,
-            following: user.edge_follow?.count || 0
+    // ENGINE 1: TIKTOK (TikWM API) - Watermark-free MP4 & MP3
+    if (platform === 'tiktok') {
+        const res = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(targetUrl)}`);
+        const json = await res.json();
+        if (json.code === 0) {
+            return {
+                url: isAudio ? json.data.music : (json.data.hdplay || json.data.play),
+                title: json.data.title || 'TikTok Video',
+                thumbnail: json.data.cover
+            };
         }
-      };
+        throw new Error(json.msg || 'TikWM Engine: Failed to resolve TikTok video.');
+    }
 
-      const posts: any[] = [];
-      const reels: any[] = [];
-      const edges = user.edge_owner_to_timeline_media?.edges || [];
-      for (const edge of edges) {
-          if (edge.node) {
-              const postData = {
-                  id: edge.node.id,
-                  type: edge.node.is_video ? 'video' : (edge.node.edge_sidecar_to_children ? 'carousel' : 'image'),
-                  url: edge.node.video_url || edge.node.display_url,
-                  thumbnail: edge.node.display_url,
-                  code: edge.node.shortcode
-              };
-              posts.push(postData);
-              if (edge.node.is_video) reels.push(postData);
-          }
-      }
+    // ENGINE 2: FACEBOOK (Siputzx API)
+    if (platform === 'facebook') {
+        try {
+            const res = await fetch(`https://api.siputzx.my.id/api/d/facebook?url=${encodeURIComponent(targetUrl)}`);
+            const json = await res.json();
+            if (json.status && json.data) {
+                const targetRes = targetQuality === '1080p' ? '1080p' : '720p';
+                let videoUrl = json.data.downloads?.find((d: any) => d.quality?.includes(targetRes))?.url;
+                if (!videoUrl && json.data.downloads?.length > 0) {
+                    videoUrl = json.data.downloads[0].url; // Fallback to first available
+                }
+                
+                if (videoUrl) {
+                    return {
+                        url: videoUrl,
+                        title: json.data.title || 'Facebook Video',
+                        thumbnail: json.data.thumbnail
+                    };
+                }
+            }
+        } catch (e) {
+            console.warn('Siputzx Facebook Engine failed', e);
+        }
+    }
 
-      const stories: any[] = [];
-      const storyEdges = rawData.graphql?.user?.edge_story?.edges || rawData.reels_media?.[0]?.items || user.stories || [];
-      for (const item of storyEdges) {
-          const node = item.node || item;
-          stories.push({
-              id: node.id || node.pk,
-              type: node.is_video || node.media_type === 2 ? 'video' : 'image',
-              url: node.video_url || node.display_url || node.image_versions2?.candidates?.[0]?.url,
-              thumbnail: node.display_url || node.image_versions2?.candidates?.[0]?.url,
-              timestamp: node.taken_at_timestamp ? new Date(node.taken_at_timestamp * 1000).toLocaleString() : "Just now"
-          });
-      }
+    // ENGINE 3: YOUTUBE (Piped API + Fallback)
+    // First try Piped API instances. If they recover from 522/Cloudflare blocks later, they will automatically work.
+    if (platform === 'youtube') {
+        const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+        const match = targetUrl.match(ytRegex);
+        if (match && match[1]) {
+            const vid = match[1];
+            
+            // 1. Attempt Piped Instances first
+            const instances = [
+              "https://api.piped.private.coffee",
+              "https://pipedapi.tokhmi.xyz",
+              "https://piped-api.lunar.icu",
+              "https://pipedapi.rivo.cc",
+              "https://pipedapi.kavin.rocks"
+            ];
 
-      const highlights: any[] = [];
-      const highlightEdges = user.edge_highlight_reels?.edges || rawData.graphql?.user?.edge_highlight_reels?.edges || [];
-      for (const item of highlightEdges) {
-          const node = item.node || item;
-          highlights.push({
-              id: node.id,
-              type: 'image',
-              url: node.cover_media?.cropped_image_version?.url || node.cover_media_dict?.cropped_image_version?.url,
-              thumbnail: node.cover_media?.cropped_image_version?.url || node.cover_media_dict?.cropped_image_version?.url,
-              code: node.id
-          });
-      }
+            for (const baseUrl of instances) {
+                try {
+                    const targetStreamUrl = `${baseUrl}/streams/${vid}`;
+                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetStreamUrl)}`;
+                    
+                    // Add timeout to not block UI forever if instances are hanging
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 3500); // 3.5 sec timeout
+                    
+                    const res = await fetch(proxyUrl, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+                    
+                    if (!res.ok) continue;
 
-      const data = {
-        success: true,
-        profile,
-        posts,
-        reels,
-        stories,
-        highlights
-      };
+                    const data = await res.json();
+                    
+                    let directDownloadUrl = null;
+                    if (isAudio) {
+                        const stream = data.audioStreams?.find((a: any) => a.format === "M4A") || data.audioStreams?.[0];
+                        directDownloadUrl = stream?.url;
+                    } else {
+                        const stream = data.videoStreams?.find((v: any) => v.format === "MPEG_4" && !v.videoOnly) || data.videoStreams?.[0];
+                        directDownloadUrl = stream?.url;
+                    }
 
-      setResult(data);
+                    if (directDownloadUrl) {
+                        return { 
+                            url: directDownloadUrl, 
+                            title: data.title || 'YouTube Media',
+                            thumbnail: data.thumbnailUrl || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+                            isExternal: false
+                        };
+                    }
+                } catch (err) {
+                    continue; // Move to next instance if error (e.g., 522, parse error, timeout)
+                }
+            }
+
+            // 2. Fallback if all Piped instances fail (Current situation)
+            try {
+                // Fetch public metadata using YouTube oEmbed
+                const oembedRes = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${vid}&format=json`);
+                const oembedJson = await oembedRes.json();
+                
+                // Fallback to SSYouTube or 10downloader for external download
+                const downloadLink = `https://ssyoutube.com/watch?v=${vid}`;
+                
+                return { 
+                    url: downloadLink, 
+                    title: oembedJson.title || 'YouTube Media',
+                    thumbnail: oembedJson.thumbnail_url,
+                    isExternal: true
+                };
+            } catch (e) {
+                // Ignore oembed error and fallback blindly
+                return {
+                    url: `https://ssyoutube.com/watch?v=${vid}`,
+                    title: 'YouTube Video',
+                    isExternal: true
+                };
+            }
+        }
+        throw new Error('YouTube Engine: Invalid YouTube URL format.');
+    }
+
+    // ENGINE 4: OPEN GRAPH / OEMBED EXTRACTOR (Pinterest, Instagram, Twitter)
+    try {
+        let fetchUrl = targetUrl;
+        
+        // Use vxtwitter for Twitter OpenGraph as it provides raw meta tags
+        if (platform === 'twitter') {
+            fetchUrl = fetchUrl.replace(/twitter\.com|x\.com/, 'vxtwitter.com');
+        } else if (platform === 'instagram') {
+            // Instagram block workaround attempt using ddinstagram
+            fetchUrl = fetchUrl.replace(/instagram\.com/, 'ddinstagram.com');
+        }
+
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(fetchUrl)}`;
+        const res = await fetch(proxyUrl);
+        const json = await res.json();
+        
+        if (json.contents) {
+            const html = json.contents;
+
+            // Parse meta tags for video CDNs
+            const ogVideoMatch = html.match(/<meta\s+property=["']og:video["']\s+content=["']([^"']+)["']/i) ||
+                                 html.match(/<meta\s+property=["']og:video:secure_url["']\s+content=["']([^"']+)["']/i) ||
+                                 html.match(/<meta\s+property=["']og:video:url["']\s+content=["']([^"']+)["']/i) ||
+                                 html.match(/<meta\s+property=["']twitter:player:stream["']\s+content=["']([^"']+)["']/i);
+            
+            const titleMatch = html.match(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i) ||
+                               html.match(/<title>([^<]+)<\/title>/i);
+                               
+            const imageMatch = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i) ||
+                               html.match(/<meta\s+property=["']twitter:image["']\s+content=["']([^"']+)["']/i);
+
+            if (ogVideoMatch && ogVideoMatch[1]) {
+                const decodedUrl = ogVideoMatch[1].replace(/&amp;/g, '&');
+                return {
+                    url: decodedUrl,
+                    title: titleMatch ? titleMatch[1].replace(/&amp;/g, '&') : 'Extracted Media',
+                    thumbnail: imageMatch ? imageMatch[1].replace(/&amp;/g, '&') : undefined
+                };
+            }
+        }
+    } catch(e) {
+        console.warn('OpenGraph Extractor Engine failed', e);
+    }
+
+    // ENGINE 5: Cobalt UI Fallback (Instagram, Twitter, etc)
+    // If we reach here for Instagram/Twitter and it failed, fallback to Cobalt UI which still supports them
+    if (platform === 'instagram' || platform === 'twitter' || platform === 'pinterest' || platform === 'reddit') {
+        return {
+            url: `https://cobalt.tools/?u=${encodeURIComponent(targetUrl)}`,
+            title: `${platform.charAt(0).toUpperCase() + platform.slice(1)} Video`,
+            isExternal: true
+        };
+    }
+
+    // FALLBACK ERROR
+    throw new Error('Media extraction failed. The link might be private, unsupported, or the platform requires authentication.');
+  };
+
+  const handleDownload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const rawUrl = url.trim();
+    if (!rawUrl) {
+      setError('Please enter a valid URL.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+    setResult(null);
+
+    try {
+      const data = await resolveMedia(rawUrl, quality);
+      setResult({
+        url: data.url,
+        title: data.title,
+        thumbnail: data.thumbnail,
+        isExternal: data.isExternal,
+        status: 'success'
+      });
     } catch (err: any) {
-      // Fallback to demo profile instead of red error box
-      setResult(getDemoData(cleanUsername));
-      setError('');
+      setError(err.message || 'An unexpected error occurred while fetching media.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const downloadFile = async (fileUrl: string) => {
+  const forceDownload = async (fileUrl: string, filename: string) => {
     try {
-      const response = await fetch(`/api/download?url=${encodeURIComponent(fileUrl)}`);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      const contentType = response.headers.get("content-type");
-      const ext = contentType?.includes("video") ? "mp4" : "jpg";
-      link.download = `ig-story-${Date.now()}.${ext}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Download failed", error);
-      alert("Failed to download file.");
+      // Direct client-side file saving via Blob
+      const res = await fetch(fileUrl);
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+      // Fallback for strict CORS CDNs
+      const a = document.createElement('a');
+      a.href = fileUrl;
+      a.target = '_blank';
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  };
+
+  const getPlatformIcon = (platform: string, size = 20) => {
+    switch (platform) {
+      case 'youtube': return <Youtube size={size} className="text-red-500" />;
+      case 'twitter': return <Twitter size={size} className="text-blue-400" />;
+      case 'facebook': return <Facebook size={size} className="text-blue-600" />;
+      case 'tiktok': return <Smartphone size={size} className="text-pink-500" />;
+      case 'reddit': return <MonitorPlay size={size} className="text-orange-500" />;
+      case 'pinterest': return <ImageIcon size={size} className="text-red-600" />;
+      case 'instagram': return <Film size={size} className="text-pink-600" />;
+      default: return <Link2 size={size} className="text-zinc-500" />;
     }
   };
 
   return (
-    <>
-      {/* Search Section */}
-      <section className="text-center mb-12 flex flex-col items-center">
-        <h1 className="text-3xl md:text-5xl font-extrabold mb-4 md:mb-6 tracking-tight bg-clip-text text-transparent bg-gradient-to-b from-white to-slate-400">
-          Instant Story &amp; Post Extraction
+    <div className="w-full">
+      {/* Hero Section */}
+      <section className="text-center mb-12 flex flex-col items-center animate-in fade-in zoom-in-95 duration-500">
+        <h1 className="text-4xl md:text-6xl font-extrabold mb-4 md:mb-6 tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400">
+          All Video Downloader
         </h1>
         <p className="text-slate-400 max-w-xl mx-auto mb-8 md:mb-10 text-base md:text-lg">
-          Anonymously view and download high-resolution stories and posts without any login required.
+          Ghost Downloader — Your universal tool to save videos from YouTube, Instagram, Facebook, TikTok, and more.
         </p>
         
-        <form onSubmit={handleSearch} className="w-full max-w-2xl mx-auto relative group">
-          <div className="bg-white/5 border border-white/10 p-2 rounded-2xl backdrop-blur-xl flex flex-col sm:flex-row items-center mb-8 md:mb-12 shadow-2xl focus-within:border-[#ee2a7b]/50 transition-colors">
-            <input
-              type="text"
-              placeholder="Paste Profile URL or Username..."
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              className="flex-1 w-full bg-transparent px-4 md:px-6 py-4 outline-none text-base md:text-lg placeholder:text-slate-500 text-slate-100"
-            />
-            <button 
-              type="submit" 
-              disabled={isLoading}
-              className="bg-gradient-to-r from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] hover:opacity-90 w-full sm:w-auto px-6 md:px-8 py-4 rounded-xl font-bold text-white shadow-lg shadow-pink-500/40 transition-all flex items-center justify-center gap-2 disabled:opacity-70 mt-2 sm:mt-0"
-            >
-              {isLoading ? <Loader2 size={24} className="animate-spin" /> : 'FETCH'}
-            </button>
+        <form onSubmit={handleDownload} className="w-full max-w-2xl mx-auto relative group">
+          <div className="bg-white/5 border border-white/10 p-2 rounded-2xl backdrop-blur-xl flex flex-col mb-6 shadow-2xl focus-within:border-[#ee2a7b]/50 transition-colors">
+            
+            <div className="flex flex-col sm:flex-row items-center w-full relative">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none hidden sm:block">
+                 {getPlatformIcon(activePlatform, 24)}
+              </div>
+              <input
+                type="text"
+                placeholder="Paste Video Link here..."
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                className="flex-1 w-full bg-transparent px-4 sm:pl-14 md:px-14 py-4 outline-none text-base md:text-lg placeholder:text-slate-500 text-slate-100"
+              />
+              <button 
+                type="submit" 
+                disabled={isLoading}
+                className="bg-gradient-to-r from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] hover:opacity-90 w-full sm:w-auto px-6 md:px-8 py-4 rounded-xl font-bold text-white shadow-lg shadow-pink-500/40 transition-all flex items-center justify-center gap-2 disabled:opacity-70 mt-2 sm:mt-0"
+              >
+                {isLoading ? <Loader2 size={24} className="animate-spin" /> : 'DOWNLOAD'}
+              </button>
+            </div>
+
+            {/* Quality Options */}
+            <div className="flex flex-col sm:flex-row gap-4 px-4 pb-4 pt-2 border-t border-white/5 mt-2">
+              <div className="flex items-center gap-3 bg-black/20 rounded-xl px-4 py-3 w-full justify-between">
+                <span className="text-slate-400 text-xs font-medium uppercase tracking-wider flex items-center gap-2">
+                   <Video size={16}/> Resolution
+                </span>
+                <select
+                  value={quality}
+                  onChange={(e) => setQuality(e.target.value)}
+                  className="bg-transparent text-white outline-none font-semibold text-sm cursor-pointer ml-auto"
+                >
+                  <option value="1080p" className="bg-[#05050a]">1080p HD Video</option>
+                  <option value="720p" className="bg-[#05050a]">720p SD Video</option>
+                  <option value="audio" className="bg-[#05050a]">MP3 Audio Only</option>
+                </select>
+              </div>
+            </div>
           </div>
           
-          {/* Server Grid */}
-          <div className="grid grid-cols-3 gap-3 md:gap-6 w-full max-w-4xl mx-auto text-left">
-            <div 
-              onClick={() => setServer('server1')}
-              className={`cursor-pointer border p-3 md:p-6 rounded-xl md:rounded-2xl backdrop-blur-md flex flex-col items-start transition-all relative overflow-hidden ${server === 'server1' ? 'bg-white/10 border-[#ee2a7b]/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
-            >
-              {server === 'server1' && <div className="absolute top-0 right-0 px-2 py-0.5 md:px-3 md:py-1 bg-[#ee2a7b] text-[8px] md:text-[10px] font-bold rounded-bl-lg">OPT</div>}
-              <div className="flex items-center gap-1.5 md:gap-2 mb-2 md:mb-3">
-                <div className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${server === 'server1' ? 'bg-green-400 animate-pulse' : 'bg-gray-500'}`}></div>
-                <span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest hidden sm:inline-block">Mumbai Node</span>
-                <span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest sm:hidden">IN</span>
-              </div>
-              <div className="text-sm md:text-xl font-bold mb-1">India</div>
-              <div className="text-[9px] md:text-xs text-slate-500 hidden md:block">Fastest for South Asia</div>
-            </div>
-
-            <div 
-              onClick={() => setServer('server2')}
-              className={`cursor-pointer border p-3 md:p-6 rounded-xl md:rounded-2xl backdrop-blur-md flex flex-col items-start transition-all relative overflow-hidden ${server === 'server2' ? 'bg-white/10 border-[#ee2a7b]/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
-            >
-              {server === 'server2' && <div className="absolute top-0 right-0 px-2 py-0.5 md:px-3 md:py-1 bg-[#ee2a7b] text-[8px] md:text-[10px] font-bold rounded-bl-lg">OPT</div>}
-              <div className="flex items-center gap-1.5 md:gap-2 mb-2 md:mb-3">
-                <div className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${server === 'server2' ? 'bg-green-400 animate-pulse' : 'bg-gray-500'}`}></div>
-                <span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest hidden sm:inline-block">Dubai Node</span>
-                <span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest sm:hidden">UAE</span>
-              </div>
-              <div className="text-sm md:text-xl font-bold mb-1">Gulf</div>
-              <div className="text-[9px] md:text-xs text-slate-500 hidden md:block">Optimized for Middle East</div>
-            </div>
-
-            <div 
-              onClick={() => setServer('server3')}
-              className={`cursor-pointer border p-3 md:p-6 rounded-xl md:rounded-2xl backdrop-blur-md flex flex-col items-start transition-all relative overflow-hidden ${server === 'server3' ? 'bg-white/10 border-[#ee2a7b]/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
-            >
-              {server === 'server3' && <div className="absolute top-0 right-0 px-2 py-0.5 md:px-3 md:py-1 bg-[#ee2a7b] text-[8px] md:text-[10px] font-bold rounded-bl-lg">OPT</div>}
-              <div className="flex items-center gap-1.5 md:gap-2 mb-2 md:mb-3">
-                <div className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${server === 'server3' ? 'bg-green-400 animate-pulse' : 'bg-gray-500'}`}></div>
-                <span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest hidden sm:inline-block">Frankfurt Node</span>
-                <span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest sm:hidden">EU</span>
-              </div>
-              <div className="text-sm md:text-xl font-bold mb-1">Europe</div>
-              <div className="text-[9px] md:text-xs text-slate-500 hidden md:block">Best for EU / Global</div>
-            </div>
+          {/* Supported Platforms */}
+          <div className="flex flex-wrap justify-center items-center gap-6 md:gap-10 opacity-70 mb-8">
+             <div className="flex flex-col items-center gap-2 text-slate-400 hover:text-pink-500 transition cursor-pointer">
+                <Film size={28} />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Instagram</span>
+             </div>
+             <div className="flex flex-col items-center gap-2 text-slate-400 hover:text-white transition cursor-pointer">
+                <Smartphone size={28} />
+                <span className="text-[10px] font-bold uppercase tracking-wider">TikTok</span>
+             </div>
+             <div className="flex flex-col items-center gap-2 text-slate-400 hover:text-blue-500 transition cursor-pointer">
+                <Facebook size={28} />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Facebook</span>
+             </div>
+             <div className="flex flex-col items-center gap-2 text-slate-400 hover:text-red-500 transition cursor-pointer">
+                <Youtube size={28} />
+                <span className="text-[10px] font-bold uppercase tracking-wider">YouTube</span>
+             </div>
+             <div className="flex flex-col items-center gap-2 text-slate-400 hover:text-red-600 transition cursor-pointer">
+                <ImageIcon size={28} />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Pinterest</span>
+             </div>
           </div>
         </form>
       </section>
 
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/50 text-red-400 p-4 rounded-lg text-center mb-8 mx-auto max-w-2xl text-sm md:text-base">
-          {error}
-        </div>
-      )}
-
-      {/* Placeholder / Empty State */}
-      {!result && !isLoading && !error && (
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="max-w-2xl mx-auto text-center py-12 px-4 border border-white/5 bg-white/5 rounded-2xl backdrop-blur-sm"
-        >
-          <div className="w-16 h-16 mx-auto bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] rounded-full flex items-center justify-center mb-6 opacity-80">
-            <Search size={28} className="text-white" />
-          </div>
-          <h2 className="text-xl md:text-2xl font-bold mb-3">Ready to explore anonymously?</h2>
-          <p className="text-slate-400 text-sm md:text-base mb-6">
-            Enter any public Instagram username or profile link above to instantly view and download their stories, reels, and posts in HD without logging in.
-          </p>
-          <div className="flex flex-wrap justify-center gap-4 text-xs font-bold tracking-wider text-slate-500 uppercase">
-            <span className="bg-black/30 px-3 py-1.5 rounded-full border border-white/5">No Login</span>
-            <span className="bg-black/30 px-3 py-1.5 rounded-full border border-white/5">100% Anonymous</span>
-            <span className="bg-black/30 px-3 py-1.5 rounded-full border border-white/5">Fast Servers</span>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Results Section */}
-      {result && (
-        <motion.section 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white/5 rounded-2xl overflow-hidden border border-white/10 shadow-2xl backdrop-blur-xl"
-        >
-          <div className="p-6 text-center border-b border-white/10">
-            <h3 className="text-lg md:text-xl font-semibold mb-4 text-[#ee2a7b]">@{result.profile.username}</h3>
-            
-            <div className="flex flex-col md:flex-row items-center justify-center gap-6 md:gap-12">
-              <div className="relative shrink-0">
-                <div className="w-24 h-24 md:w-32 md:h-32 rounded-full p-1 bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7]">
-                  <img 
-                    src={result.profile.avatar} 
-                    alt={result.profile.username} 
-                    className="w-full h-full rounded-full object-cover border-4 border-[#05050a]"
-                  />
-                </div>
-              </div>
-              
-              <div className="flex flex-col items-center md:items-start text-center md:text-left">
-                <div className="flex gap-4 md:gap-6 mb-4">
-                  <div>
-                    <div className="font-bold text-lg md:text-2xl">{result.profile.stats.posts}</div>
-                    <div className="text-[10px] md:text-xs text-slate-500 uppercase tracking-widest font-bold">posts</div>
-                  </div>
-                  <div>
-                    <div className="font-bold text-lg md:text-2xl">{result.profile.stats.followers}</div>
-                    <div className="text-[10px] md:text-xs text-slate-500 uppercase tracking-widest font-bold">followers</div>
-                  </div>
-                  <div>
-                    <div className="font-bold text-lg md:text-2xl">{result.profile.stats.following}</div>
-                    <div className="text-[10px] md:text-xs text-slate-500 uppercase tracking-widest font-bold">following</div>
-                  </div>
-                </div>
-                <div className="text-sm">
-                  <div className="font-bold text-base md:text-lg mb-1">{result.profile.name}</div>
-                  <div className="whitespace-pre-wrap text-slate-400 leading-relaxed text-xs md:text-sm max-w-sm">{result.profile.bio}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Tabs */}
-          <div className="flex justify-center border-b border-white/10 text-xs md:text-sm font-bold tracking-wider uppercase overflow-x-auto no-scrollbar">
-            {(['POSTS', 'STORIES', 'HIGHLIGHTS', 'REELS'] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 md:px-6 py-3 md:py-4 transition-colors relative whitespace-nowrap ${activeTab === tab ? 'text-[#ee2a7b]' : 'text-slate-500 hover:text-slate-300'}`}
-              >
-                {tab}
-                {activeTab === tab && (
-                  <motion.div 
-                    layoutId="activeTab"
-                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#ee2a7b]"
-                  />
-                )}
-              </button>
-            ))}
-          </div>
-
-          {/* Media Content */}
-          <div className="p-3 md:p-8 bg-black/20">
-            {activeTab === 'STORIES' ? (
-              result.stories && result.stories.length > 0 ? (
-                <div className="max-w-[400px] mx-auto w-full">
-                  {/* Story Indicators */}
-                  <div className="flex gap-1.5 md:gap-2 mb-4 justify-center flex-wrap">
-                    {result.stories.map((_, idx) => (
-                      <button 
-                        key={idx}
-                        onClick={() => setActiveStoryIndex(idx)}
-                        className={`h-1 md:h-1.5 rounded-full transition-all ${idx === activeStoryIndex ? 'w-4 md:w-6 bg-[#ee2a7b]' : 'w-1.5 md:w-2 bg-white/20'}`}
-                        aria-label={`Go to story ${idx + 1}`}
-                      />
-                    ))}
-                  </div>
-                  
-                  {/* Active Story Viewer */}
-                  <div className="relative rounded-xl md:rounded-2xl overflow-hidden bg-black mx-auto max-h-[60vh] md:max-h-[70vh] aspect-[9/16] shadow-2xl group border border-white/5 flex items-center justify-center">
-                    <AnimatePresence mode="wait">
-                      <motion.div
-                        key={activeStoryIndex}
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 1.05 }}
-                        transition={{ duration: 0.2 }}
-                        className="w-full h-full flex items-center justify-center"
-                      >
-                        {result.stories[activeStoryIndex].type === 'video' ? (
-                          <video 
-                            src={result.stories[activeStoryIndex].url}
-                            className="w-full h-full object-contain"
-                            controls
-                            playsInline
-                            autoPlay
-                            muted
-                            loop
-                          />
-                        ) : (
-                          <img 
-                            src={result.stories[activeStoryIndex].url} 
-                            alt="Instagram Story" 
-                            className="w-full h-full object-contain"
-                          />
-                        )}
-                        
-                        <div className="absolute top-2 right-2 md:top-4 md:right-4 flex gap-2">
-                          <button className="bg-black/50 border border-white/10 backdrop-blur-md p-1.5 md:p-2 rounded-full text-white hover:bg-white/10 transition hidden md:block">
-                            <Play size={16} />
-                          </button>
-                        </div>
-                        <div className="absolute bottom-2 right-2 md:bottom-4 md:right-4 text-[10px] md:text-xs font-bold tracking-wider bg-black/60 border border-white/10 backdrop-blur-md px-2 md:px-3 py-1 md:py-1.5 rounded-full text-white">
-                          {result.stories[activeStoryIndex].timestamp}
-                        </div>
-                      </motion.div>
-                    </AnimatePresence>
-                  </div>
-                  
-                  <button 
-                    onClick={() => downloadFile(result.stories[activeStoryIndex].url)}
-                    className="w-full mt-4 md:mt-6 bg-gradient-to-r from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] hover:opacity-90 text-white font-bold py-3 md:py-4 rounded-xl transition-all flex items-center justify-center gap-2 text-sm md:text-lg shadow-lg shadow-pink-500/40 active:scale-[0.98]"
-                  >
-                    DOWNLOAD STORY <Download size={18} />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-12 md:py-20 text-slate-500 font-medium">
-                  <p className="text-base md:text-xl text-center">No active stories found.</p>
-                </div>
-              )
-            ) : (
-              // Shared grid view for POSTS, REELS, and HIGHLIGHTS
-              (() => {
-                const mediaArray = activeTab === 'POSTS' 
-                  ? result.posts 
-                  : activeTab === 'REELS' 
-                    ? result.reels 
-                    : result.highlights;
-                    
-                const emptyMessage = activeTab === 'POSTS' 
-                  ? "No posts found for this user." 
-                  : activeTab === 'REELS' 
-                    ? "No reels found for this user." 
-                    : "No highlights found for this user.";
-
-                return mediaArray && mediaArray.length > 0 ? (
-                  <div className="grid grid-cols-3 gap-1 sm:gap-2 md:gap-4 max-w-4xl mx-auto">
-                    {mediaArray.map((media) => (
-                      <div 
-                        key={media.id} 
-                        className="relative aspect-square group bg-black/40 rounded-md sm:rounded-lg md:rounded-xl overflow-hidden cursor-pointer"
-                        onClick={() => setSelectedPost(media)}
-                      >
-                        <img 
-                          src={media.thumbnail} 
-                          alt={`Instagram ${activeTab.toLowerCase()}`} 
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                        />
-                        {media.type === 'video' && (
-                          <div className="absolute top-1 right-1 md:top-2 md:right-2 bg-black/60 p-1 md:p-1.5 rounded-full">
-                            <Play size={12} className="text-white md:w-3.5 md:h-3.5" />
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                           <div className="bg-[#6228d7] text-white p-2 md:p-3 rounded-full shadow-lg shadow-purple-500/40">
-                             <Eye size={16} className="md:w-5 md:h-5" />
-                           </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-12 md:py-20 text-slate-500 font-medium text-center">
-                    <p className="text-base md:text-xl">{emptyMessage}</p>
-                  </div>
-                );
-              })()
-            )}
-          </div>
-        </motion.section>
-      )}
-
-      {/* Media Modal */}
+      {/* Loading Skeleton */}
       <AnimatePresence>
-        {selectedPost && (
+        {isLoading && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-2 sm:p-4 backdrop-blur-md"
-            onClick={() => setSelectedPost(null)}
+             initial={{ opacity: 0, height: 0 }}
+             animate={{ opacity: 1, height: 'auto' }}
+             exit={{ opacity: 0, height: 0 }}
+             className="max-w-2xl mx-auto mb-8 overflow-hidden"
           >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="relative max-w-md w-full bg-[#05050a] rounded-2xl md:rounded-3xl overflow-hidden border border-white/10 shadow-2xl flex flex-col max-h-[90vh] md:max-h-[95vh]"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                className="absolute top-2 right-2 md:top-4 md:right-4 z-50 bg-black/50 text-white p-1.5 md:p-2 rounded-full hover:bg-white/20 transition-colors border border-white/10"
-                onClick={() => setSelectedPost(null)}
-              >
-                <X size={16} className="md:w-5 md:h-5" />
-              </button>
-              
-              <div className="w-full bg-black flex-1 flex items-center justify-center overflow-hidden relative">
-                {selectedPost.type === 'video' ? (
-                  <video 
-                    src={selectedPost.url} 
-                    className="w-full h-full object-contain max-h-[60vh] md:max-h-[70vh]" 
-                    controls 
-                    autoPlay 
-                    loop 
-                    playsInline 
-                  />
-                ) : (
-                  <img 
-                    src={selectedPost.url} 
-                    className="w-full h-full object-contain max-h-[60vh] md:max-h-[70vh]" 
-                    alt="Instagram Post" 
-                  />
-                )}
-              </div>
-              
-              <div className="p-4 md:p-6 border-t border-white/10 bg-[#05050a]/90 backdrop-blur-md">
-                <button
-                  onClick={() => downloadFile(selectedPost.url)}
-                  className="w-full bg-gradient-to-r from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] hover:opacity-90 text-white font-bold py-3 md:py-4 rounded-xl transition-all flex items-center justify-center gap-2 text-sm md:text-lg shadow-lg shadow-pink-500/40 active:scale-[0.98]"
-                >
-                  <Download size={18} className="md:w-5 md:h-5" /> DOWNLOAD MEDIA
-                </button>
-              </div>
-            </motion.div>
+             <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-md">
+                <div className="animate-pulse flex flex-col items-center">
+                   <div className="w-16 h-16 bg-white/10 rounded-full mb-4"></div>
+                   <div className="h-4 bg-white/10 rounded w-1/2 mb-3"></div>
+                   <div className="h-3 bg-white/10 rounded w-1/3 mb-6"></div>
+                   <div className="w-40 h-12 bg-white/10 rounded-xl"></div>
+                </div>
+             </div>
           </motion.div>
         )}
       </AnimatePresence>
-    </>
+
+      {/* Error */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="bg-red-500/10 border border-red-500/50 text-red-400 p-4 rounded-xl text-center mb-8 mx-auto max-w-2xl text-sm md:text-base flex items-center justify-center gap-2"
+          >
+            <AlertCircle size={18} /> {error}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Results */}
+      <AnimatePresence>
+        {result && !isLoading && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="max-w-2xl mx-auto bg-white/5 border border-white/10 rounded-2xl p-6 mb-8 backdrop-blur-md text-center relative overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#ee2a7b]/10 blur-[50px] pointer-events-none rounded-full"></div>
+            
+            {result.thumbnail && (
+              <img src={result.thumbnail} alt="Thumbnail" className="w-full max-w-sm mx-auto rounded-xl mb-6 shadow-lg border border-white/10 object-cover aspect-video" />
+            )}
+            
+            <h3 className="text-xl font-bold text-white mb-2 truncate px-4">
+              {result.title}
+            </h3>
+            
+            <p className="text-slate-400 text-sm mb-6">
+              Your {quality === 'audio' ? 'audio' : 'video'} file is ready.
+            </p>
+
+            {result.isExternal ? (
+              <div className="flex flex-col items-center gap-4">
+                <a
+                  href={result.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:w-auto bg-gradient-to-r from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] hover:opacity-90 text-white font-bold py-3 px-8 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-pink-500/25 mx-auto inline-flex"
+                >
+                  <Download size={20} /> {result.url.includes('ssyoutube') ? 'Download via ssyoutube' : 'Download via Cobalt'}
+                </a>
+                <p className="text-xs text-yellow-500 max-w-md bg-yellow-500/10 p-3 rounded-lg border border-yellow-500/20">
+                  <AlertCircle size={14} className="inline mr-1 -mt-0.5" />
+                  <strong>Note:</strong> Some of our primary backend servers are experiencing high traffic or blocks. We have safely redirected you to our trusted backup server. You can safely download your file there, or try again later!
+                </p>
+              </div>
+            ) : (
+              <button
+                onClick={() => forceDownload(result.url, `ghost-dl-${Date.now()}.${quality === 'audio' ? 'mp3' : 'mp4'}`)}
+                className="w-full sm:w-auto bg-gradient-to-r from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] hover:opacity-90 text-white font-bold py-3 px-8 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-pink-500/25 mx-auto"
+              >
+                <Download size={20} /> Save to Device
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
+      {/* About & SEO Section */}
+      <section id="about" className="mt-16 md:mt-24 text-left max-w-4xl mx-auto space-y-12 pb-12 px-4 md:px-0 opacity-80">
+        
+        <div className="text-center mb-2 border-b border-white/10 pb-8">
+          <h2 className="text-3xl font-bold text-white mb-4">About Ghost Downloader</h2>
+          <p className="text-slate-400 text-sm md:text-base max-w-2xl mx-auto leading-relaxed">
+            Your ultimate universal video saver and <strong>TikTok video downloader without watermark</strong>. We make it easy, fast, and secure to save media from your favorite social platforms directly to your device for free.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="bg-white/5 border border-white/10 p-6 rounded-2xl">
+            <h2 className="text-xl font-bold mb-3 text-white flex items-center gap-2">
+              <Smartphone size={24} className="text-pink-500" />
+              TikTok Video Downloader No Watermark
+            </h2>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              Ghost Downloader is the fastest and most reliable <strong>TikTok Video Downloader without watermark</strong>. Save your favorite TikTok clips in ultra-high quality (HD) directly to your iPhone, Android, or PC. Our tool is 100% free and does not require you to install any apps or log into your TikTok account. Just paste the link and download instantly!
+            </p>
+          </div>
+
+          <div className="bg-white/5 border border-white/10 p-6 rounded-2xl">
+            <h2 className="text-xl font-bold mb-3 text-white flex items-center gap-2">
+              <Youtube size={24} className="text-red-500" />
+              Free YouTube Downloader
+            </h2>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              Looking to save YouTube videos or shorts? Our <strong>YouTube video downloader</strong> provides a fast, ad-free experience. Easily convert YouTube links to high-quality MP4 or MP3 files. It works on all devices globally, making it your go-to universal saver.
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white/5 border border-white/10 p-6 md:p-8 rounded-2xl">
+          <h2 className="text-2xl font-bold mb-4 text-white">Why Choose Ghost Downloader?</h2>
+          <p className="text-slate-400 text-sm md:text-base leading-relaxed mb-4">
+            Ghost Downloader isn't just a <strong>TikTok video downloader</strong>; it's a completely universal tool designed for creators and viewers alike. Whether you want to grab an inspiring <strong>Instagram Reel</strong>, save a funny <strong>Facebook video</strong>, or archive a thread from <strong>Twitter (X)</strong>, our platform handles it all without compromising your privacy.
+          </p>
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-300 mt-6">
+            <li className="flex items-start gap-2">
+              <span className="text-green-400 font-bold">✓</span>
+              <span><strong>No Watermark:</strong> Get original TikTok videos clean and clear.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-green-400 font-bold">✓</span>
+              <span><strong>No Registration:</strong> We don't ask for your personal data or login.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-green-400 font-bold">✓</span>
+              <span><strong>Universal Support:</strong> YouTube, Instagram, Facebook, TikTok, Reddit & more.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-green-400 font-bold">✓</span>
+              <span><strong>Fast & Free:</strong> Powered by premium CDNs ensuring top speed globally.</span>
+            </li>
+          </ul>
+        </div>
+
+        {/* FAQ Section */}
+        <FAQ />
+      </section>
+      
+    </div>
   );
 }
